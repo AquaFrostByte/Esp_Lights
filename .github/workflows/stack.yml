@@ -1,0 +1,55 @@
+name: Stack
+
+on:
+  push:
+    paths:
+      - "compose.yaml"
+      - ".env.example"
+      - "web/**"
+      - ".github/workflows/stack.yml"
+  pull_request:
+    paths:
+      - "compose.yaml"
+      - ".env.example"
+      - "web/**"
+      - ".github/workflows/stack.yml"
+  workflow_dispatch:
+
+jobs:
+  smoke-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate compose file
+        run: |
+          cp .env.example .env
+          docker compose config -q
+
+      - name: Start broker and web server
+        run: docker compose up -d
+
+      - name: Broker accepts the login and keeps retained messages
+        run: |
+          sleep 5
+          docker compose exec -T mosquitto mosquitto_pub -h localhost -u ledbox -P change-me -t led/box/power -m ON -r
+          out=$(docker compose exec -T mosquitto mosquitto_sub -h localhost -u ledbox -P change-me -t led/box/power -C 1 -W 5)
+          echo "got: $out"
+          test "$out" = "ON"
+
+      - name: Broker rejects anonymous clients on 1883
+        run: |
+          if docker compose exec -T mosquitto mosquitto_pub -h localhost -t led/box/power -m OFF; then
+            echo "anonymous publish on 1883 was accepted"; exit 1
+          fi
+
+      - name: Web page is served
+        run: curl -fsS http://localhost:8087/ | grep -q "Light Controller"
+
+      - name: Show logs on failure
+        if: failure()
+        run: docker compose logs
+
+      - name: Stop
+        if: always()
+        run: docker compose down -v

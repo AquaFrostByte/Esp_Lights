@@ -1,0 +1,45 @@
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2
+    restart: unless-stopped
+    ports:
+      - 1883:1883   # ESP32, Home Assistant (login required)
+      - 9001:9001   # websockets for the web page (no login, only led/box/#)
+    configs:
+      - source: mosquitto_conf
+        target: /mosquitto/config/mosquitto.conf
+    command: >
+      sh -c "rm -f /mosquitto/config/passwd &&
+      mosquitto_passwd -b -c /mosquitto/config/passwd '${MQTT_USER}' '${MQTT_PASS}' &&
+      printf 'topic readwrite led/box/#\n' > /mosquitto/config/web.acl &&
+      chown mosquitto:mosquitto /mosquitto/config/passwd /mosquitto/config/web.acl &&
+      chmod 600 /mosquitto/config/passwd /mosquitto/config/web.acl &&
+      exec mosquitto -c /mosquitto/config/mosquitto.conf"
+    volumes:
+      - mosquitto-data:/mosquitto/data
+  web:
+    image: nginx:alpine
+    restart: unless-stopped
+    ports:
+      - 8087:80
+    volumes:
+      - ./web:/usr/share/nginx/html:ro
+configs:
+  mosquitto_conf:
+    content: |
+      per_listener_settings true
+
+      listener 1883
+      allow_anonymous false
+      password_file /mosquitto/config/passwd
+
+      listener 9001
+      protocol websockets
+      allow_anonymous true
+      acl_file /mosquitto/config/web.acl
+
+      persistence true
+      persistence_location /mosquitto/data/
+volumes:
+  mosquitto-data: null
+networks: {}

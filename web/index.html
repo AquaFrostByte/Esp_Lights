@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Light Controller</title>
+<style>
+  :root { --accent: #4ec0e9; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; display: grid; place-items: center;
+    font-family: system-ui, sans-serif; color: #fff;
+    background: radial-gradient(ellipse at bottom, #0d1d31 0, #0c0d13 100%);
+  }
+  .stars { position: fixed; inset: 0; overflow: hidden; pointer-events: none; }
+  .star {
+    position: absolute; left: 100vw; height: 2px; width: 6em; border-radius: 50%;
+    background: linear-gradient(45deg, var(--accent), transparent);
+    filter: drop-shadow(0 0 6px var(--accent));
+    animation: fall var(--speed) linear infinite;
+  }
+  @keyframes fall { to { transform: translateX(-130vw); } }
+
+  .card {
+    position: relative; z-index: 1; width: min(92vw, 560px); padding: 2rem;
+    backdrop-filter: blur(10px); background: rgba(255,255,255,.1);
+    border: 1px solid rgba(255,255,255,.3); border-radius: 16px;
+    box-shadow: 0 8px 32px rgba(0,0,0,.3);
+  }
+  h1 { margin: 0 0 1rem; font-size: 1.6rem; display: flex; align-items: center; gap: .6rem; }
+  #dot { width: .7rem; height: .7rem; border-radius: 50%; background: #888; }
+  #dot.on { background: #3ddc97; } #dot.off { background: #e5484d; }
+  p { margin: 1.2rem 0 .5rem; opacity: .8; }
+  .modes { display: flex; gap: .75rem; }
+  .modes button {
+    flex: 1; padding: 1rem; font-size: 1.1rem; color: #fff; cursor: pointer;
+    background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.3);
+    border-radius: 12px; transition: transform .1s, box-shadow .1s;
+  }
+  .modes button:active { transform: scale(.95); }
+  .modes button.active { border-color: var(--accent); box-shadow: 0 0 16px rgba(78,192,233,.5); }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  #val { display: block; text-align: center; margin-top: .3rem; }
+</style>
+</head>
+<body>
+<div class="stars" id="stars"></div>
+
+<div class="card">
+  <h1><span id="dot" title="offline"></span>Light Controller</h1>
+
+  <p>Mode</p>
+  <div class="modes">
+    <button data-mode="0">Off</button>
+    <button data-mode="1">On</button>
+    <button data-mode="2">Fade</button>
+  </div>
+
+  <p>Brightness</p>
+  <input type="range" id="slider" min="0" max="255" value="125">
+  <span id="val">125</span>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/mqtt@5/dist/mqtt.min.js"></script>
+<script>
+  // ---- config ----
+  // Broker must have a websockets listener (see README). Use wss:// if this page is served over https.
+  const BROKER = `ws://${location.hostname}:9001`;
+  const PREFIX = "led/box";   // same as MQTT_PREFIX in config.h
+  // ----------------
+
+  const T = {
+    power: PREFIX + "/power", effect: PREFIX + "/effect",
+    bright: PREFIX + "/brightness", status: PREFIX + "/status",
+  };
+  const state = { power: "ON", effect: "static" };
+  const $ = (s) => document.querySelector(s);
+  const slider = $("#slider"), val = $("#val"), dot = $("#dot");
+
+  // background stars
+  for (let i = 0; i < 40; i++) {
+    const s = document.createElement("div");
+    s.className = "star";
+    s.style.top = Math.random() * 100 + "vh";
+    s.style.setProperty("--speed", 6 + Math.random() * 6 + "s");
+    s.style.animationDelay = Math.random() * 10 + "s";
+    $("#stars").appendChild(s);
+  }
+
+  // buttons: 0 = Off, 1 = On (static), 2 = Fade
+  function showMode() {
+    const m = state.power === "OFF" ? "0" : state.effect === "fade" ? "2" : "1";
+    document.querySelectorAll(".modes button")
+      .forEach(b => b.classList.toggle("active", b.dataset.mode === m));
+  }
+  function showStatus(online) {
+    dot.className = online ? "on" : "off";
+    dot.title = online ? "online" : "offline";
+  }
+
+  const client = mqtt.connect(BROKER, { reconnectPeriod: 2000 });
+  client.on("connect", () => client.subscribe([T.power, T.effect, T.bright, T.status]));
+  client.on("close", () => showStatus(false));
+  client.on("message", (topic, payload) => {
+    const v = payload.toString();
+    if (topic === T.power) { state.power = v.toUpperCase(); showMode(); }
+    else if (topic === T.effect) { state.effect = v.toLowerCase(); showMode(); }
+    else if (topic === T.bright) { slider.value = v; val.textContent = v; }
+    else if (topic === T.status) showStatus(v === "online");
+  });
+
+  // retained, so the box picks the last state up again after a reboot
+  const publish = (topic, v) => client.publish(topic, String(v), { qos: 1, retain: true });
+
+  document.querySelectorAll(".modes button").forEach(b =>
+    b.addEventListener("click", () => {
+      const m = b.dataset.mode;
+      if (m === "0") {
+        publish(T.power, "OFF");
+      } else {
+        publish(T.effect, m === "2" ? "fade" : "static");
+        publish(T.power, "ON");
+      }
+    }));
+
+  let last = 0;
+  slider.addEventListener("input", () => {
+    val.textContent = slider.value;
+    const now = Date.now();
+    if (now - last > 50) { last = now; publish(T.bright, slider.value); }  // live while dragging
+  });
+  slider.addEventListener("change", () => publish(T.bright, slider.value)); // make sure the final value lands
+</script>
+</body>
+</html>

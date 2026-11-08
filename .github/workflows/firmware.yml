@@ -1,0 +1,36 @@
+name: Firmware
+
+# Compile check only. Wi-Fi and MQTT credentials are compiled in, so a CI-built
+# binary would not be usable on your network; build and flash your own.
+on:
+  push:
+    paths:
+      - "LED-Box/**"
+      - ".github/workflows/firmware.yml"
+  pull_request:
+    paths:
+      - "LED-Box/**"
+      - ".github/workflows/firmware.yml"
+  workflow_dispatch:
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: arduino/setup-arduino-cli@v2
+
+      - name: Install ESP32 core and libraries
+        run: |
+          arduino-cli config init
+          arduino-cli config add board_manager.additional_urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli core update-index
+          arduino-cli core install esp32:esp32
+          arduino-cli lib install PubSubClient
+
+      - name: Use the example config
+        run: cp LED-Box/config.example.h LED-Box/config.h
+
+      - name: Compile
+        run: arduino-cli compile --fqbn esp32:esp32:esp32 LED-Box
