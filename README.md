@@ -4,6 +4,9 @@ A guide to make smart LEDs from cheap AliExpress ones.
 Two-wire LED strips light one half for one polarity and the other half for the opposite polarity.
 An H-bridge flips the polarity thousands of times per second, so to the eye everything is lit.
 
+You have to host ur own MQTT SERVER!! Using https://mosquitto.org/ 
+Default settings are fine!
+
 ```
 Home Assistant ─┐
                 ├──▶ MQTT broker (your server) ──▶ ESP32 ──▶ L293D ──▶ LEDs
