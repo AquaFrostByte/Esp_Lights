@@ -179,6 +179,20 @@ void setup() {
 
   WiFi.mode(WIFI_STA);
   WiFi.setAutoReconnect(true);
+
+  #ifdef STATIC_IP
+  if (strlen(STATIC_IP) > 0) {
+    IPAddress ip, gateway, subnet, dns;
+    ip.fromString(STATIC_IP);
+    gateway.fromString(STATIC_GATEWAY);
+    subnet.fromString(STATIC_SUBNET);
+    dns.fromString(STATIC_DNS);
+
+    // Apply the static IP configuration
+    WiFi.config(ip, gateway, subnet, dns);
+  }
+  #endif
+
   WiFi.begin(WIFI_SSID, WIFI_PASS);
 
   mqtt.setBufferSize(1024);   // discovery payload is bigger than the 256 byte default
